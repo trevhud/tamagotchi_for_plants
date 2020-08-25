@@ -8,9 +8,9 @@ import {
 
 import { Container } from "../global"
 
-let branches = []
+let branches = 0
 let gamePlays = 0
-let timerIds = []
+let timerId
 
 // Tree configuration
 const seed = {i: 0, x: 420, y: 600, a: 0, l: 130, d: 0, g: gamePlays }; // a = angle, l = length, d = depth
@@ -27,14 +27,14 @@ const Header = () => {
 
   function leftRightBranch(b, left) {
     if (b.d === maxDepth) {
-      clearTimers()
+      clearInterval(timerId)
       return;
     }
 
     const end = endPt(b)
     const daR = ar * Math.random() - ar * 0.5;
     const newB = {
-      i: branches.length,
+      i: branches,
       x: end.x,
       y: end.y,
       a: left ? (b.a - da) : (b.a + da) + daR,
@@ -47,7 +47,7 @@ const Header = () => {
   }
 
   function drawLine(branch) {
-    branches.push(branch)
+    branches++
 
     let line = select(svgRef.current)
       .append('line')
@@ -79,22 +79,16 @@ const Header = () => {
   }
 
   function regenerate() {
-    console.log(timerIds, perfectMode, gamePlays)
+    console.log(timerId, perfectMode, gamePlays)
     curlBranches(true)
     growthSpeed(true)
-    clearTimers()
+    clearInterval(timerId)
     if (!perfectMode) startTimer()
     gamePlays += 1
     seed.g = gamePlays
     select(svgRef.current).selectAll('*').remove()
-    branches = []
+    branches = 0
     drawLine(seed)
-  }
-
-  function clearTimers() {
-    timerIds.forEach(timerId => {
-      clearInterval(timerId)
-    })
   }
 
   function changeColor(green) {
@@ -112,9 +106,7 @@ const Header = () => {
   }
 
   function startTimer() {
-    let timerId = setInterval(() => pathologies[Math.floor(Math.random() * pathologies.length)](), 5000)
-    timerIds.push(timerId);
-    console.log('start timer', timerIds)
+    timerId = setInterval(() => pathologies[Math.floor(Math.random() * pathologies.length)](), 5000)
   }
 
   useEffect(regenerate,[perfectMode]);
