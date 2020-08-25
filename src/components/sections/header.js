@@ -1,55 +1,138 @@
-import React from "react"
+import React, { useEffect, useRef } from "react"
 import styled from "styled-components"
-import { graphql, useStaticQuery, Link } from "gatsby"
-import Img from "gatsby-image"
+
+import {
+  select,
+  selectAll,
+  easeLinear
+} from 'd3';
 
 import { Container } from "../global"
 
 const Header = () => {
-  const data = useStaticQuery(graphql`
-    query {
-      file(sourceInstanceName: { eq: "product" }, name: { eq: "green-skew" }) {
-        childImageSharp {
-          fluid(maxWidth: 1000) {
-            ...GatsbyImageSharpFluid_tracedSVG
-          }
-        }
-      }
-    }
-  `)
+  const svgRef = useRef(null);
+  let branches = []
+  let gamePlays = 0
+  let timerId
+  const pathologies = [changeColor, curlBranches, growthSpeed]
 
-  const handleSubmit = event => {
-    event.preventDefault()
+  // Tree configuration
+  const seed = {i: 0, x: 420, y: 600, a: 0, l: 130, d: 0, g: gamePlays }; // a = angle, l = length, d = depth
+  let speed = 4000
+  let da = 0.5; // Angle delta
+  const dl = 0.8; // Length delta (factor)
+  const ar = 0.7; // Randomness
+  const maxDepth = 10;
+
+  function leftRightBranch(b, left) {
+    if (b.d === maxDepth) {
+      clearInterval(timerId)
+      return;
+    }
+
+    const end = endPt(b)
+    const daR = ar * Math.random() - ar * 0.5;
+    const newB = {
+      i: branches.length,
+      x: end.x,
+      y: end.y,
+      a: left ? (b.a - da) : (b.a + da) + daR,
+      l: b.l * dl,
+      d: b.d + 1,
+      parent: b.i,
+      g: b.g
+    };
+    drawLine(newB);
   }
+
+  function endPt(b) {
+    // Return endpoint of branch
+    const x = b.x + b.l * Math.sin( b.a );
+    const y = b.y - b.l * Math.cos( b.a );
+    return {x: x, y: y};
+  }
+
+  // D3 functions
+  function x1(d) {return d.x;}
+  function y1(d) {return d.y;}
+  function x2(d) {return endPt(d).x;}
+  function y2(d) {return endPt(d).y;}
+
+  function drawLine(branch) {
+    branches.push(branch)
+
+    let line = select(svgRef.current)
+      .append('line')
+      .datum(branch)
+      .attr('id', 'line' + branch.i)
+      .attr('class', 'line')
+      .attr('x1', x1)
+      .attr('y1', y1)
+      .attr('x2', x2)
+      .attr('y2', y2)
+      .style('stroke', 'green')
+      .style('stroke-width', function(d) {return parseInt(maxDepth + 1 - d.d) + 'px';})
+
+    let totalLength = line.node().getTotalLength()
+
+    line.attr("stroke-dasharray", totalLength + " " + totalLength)
+      .attr("stroke-dashoffset", totalLength)
+      
+    line.transition()
+      .duration(speed)
+      .ease(easeLinear)
+      .attr("stroke-dashoffset", 0)
+      .on('end', () => {
+        if (branch.g === gamePlays) {
+          leftRightBranch(branch, true)
+          leftRightBranch(branch)
+        }
+      })
+  }
+
+  function regenerate() {
+    clearInterval(timerId)
+    timerId = setInterval(() => pathologies[Math.floor(Math.random() * pathologies.length)](), 5000);
+    branches = []
+    select(svgRef.current).selectAll('*').remove()
+    gamePlays++
+    seed.g = gamePlays
+    drawLine(seed)
+  }
+
+  function changeColor(green) {
+    select(svgRef.current)
+      .selectAll('.line')
+      .style('stroke', green ? 'green' : 'yellow')
+  }
+
+  function curlBranches(uncurl) {
+    da = uncurl ? 0.5 : 2
+  }
+
+  function growthSpeed(faster) {
+    speed = faster ? 5000 : 20000
+  }
+
+  useEffect(
+    () => {
+      regenerate();
+    },
+    []
+  ); 
 
   return (
     <HeaderWrapper id="top">
       <Container>
         <Flex>
-          <HeaderTextGroup>
-            <Subtitle>Personal Finance</Subtitle>
-            <h1>
-              All your money,
-              <br />
-              one account
-            </h1>
-            <h2>
-              We're building next generation personal finance tools. Sign up to
-              get early access.
-            </h2>
-            <HeaderForm onSubmit={handleSubmit}>
-              <HeaderInput placeholder="Your email" />
-              <HeaderButton>Early access</HeaderButton>
-            </HeaderForm>
-            <FormSubtitle>
-              Already have a beta account?{" "}
-              <FormSubtitleLink to="/">Sign in</FormSubtitleLink>
-            </FormSubtitle>
-          </HeaderTextGroup>
-          <ImageWrapper>
-            <StyledImage fluid={data.file.childImageSharp.fluid} />
-            <br />
-          </ImageWrapper>
+          <div><svg height="600px" width="100%" ref={svgRef} /></div>
+          <div>
+            <button onClick={() => curlBranches(true)}>Add water</button>
+            <button onClick={() => changeColor(true)}>Add nutrients</button>
+            <button onClick={() => growthSpeed(true)}>Add light</button>
+            <button onClick={() => clearInterval(timerId)}>Perfect mode</button>
+            <button onClick={regenerate}>Regenerate</button>
+          </div>
         </Flex>
       </Container>
     </HeaderWrapper>
@@ -66,143 +149,14 @@ const HeaderWrapper = styled.header`
   @media (max-width: ${props => props.theme.screen.md}) {
   }
 `
-const Subtitle = styled.h5`
-  font-size: 16px;
-  color: ${props => props.theme.color.accent};
-  letter-spacing: 0px;
-  margin-bottom: 16px;
-`
-
-const HeaderTextGroup = styled.div`
-  margin: 0;
-
-  > div {
-    width: 120%;
-    margin-bottom: -4.5%;
-
-    @media (max-width: ${props => props.theme.screen.md}) {
-      margin: 0 16px;
-    }
-  }
-
-  h1 {
-    margin: 0 0 24px;
-    color: ${props => props.theme.color.primary};
-  }
-
-  h2 {
-    margin-bottom: 24px;
-    ${props => props.theme.font_size.regular}
-  }
-
-  p {
-    margin-bottom: 48px;
-  }
-`
 
 const Flex = styled.div`
   display: grid;
   justify-content: space-between;
   align-content: center;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 850px 1fr;
   @media (max-width: ${props => props.theme.screen.md}) {
     grid-template-columns: 1fr;
     grid-gap: 64px;
-  }
-`
-
-const HeaderForm = styled.form`
-  display: flex;
-  flex-direction: row;
-  padding-bottom: 16px;
-
-  @media (max-width: ${props => props.theme.screen.sm}) {
-    flex-direction: column;
-  }
-`
-
-const FormSubtitle = styled.span`
-  ${props => props.theme.font_size.xxsmall}
-`
-
-const FormSubtitleLink = styled(Link)`
-  color: ${props => props.theme.color.secondary};
-  padding-bottom: 1px;
-  margin-left: 8px;
-  text-decoration: none;
-  border-bottom: 1px solid ${props => props.theme.color.secondary};
-`
-
-const HeaderInput = styled.input`
-  font-weight: 500;
-  font-size: 16px;
-  color: ${props => props.theme.color.primary};
-  line-height: 42px;
-  width: 100%;
-  text-align: left;
-  height: 60px;
-  border-width: 1px;
-  border-style: solid;
-  border-color: ${props => props.theme.color.secondary};
-  border-image: initial;
-  border-radius: 4px;
-  padding: 8px 16px;
-  outline: 0px;
-  &:focus {
-    box-shadow: inset ${props => props.theme.color.secondary} 0px 0px 0px 2px;
-  }
-  @media (max-width: ${props => props.theme.screen.md}) {
-    margin-bottom: 8px;
-  }
-  @media (max-width: ${props => props.theme.screen.sm}) {
-    display: block;
-    width: 100%;
-  }
-`
-
-const HeaderButton = styled.button`
-  font-weight: 500;
-  font-size: 14px;
-  color: white;
-  letter-spacing: 1px;
-  height: 60px;
-  display: block;
-  margin-left: 8px;
-  text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
-  background: ${props => props.theme.color.secondary};
-  border-radius: 4px;
-  padding: 0px 40px;
-  border-width: 0px;
-  border-style: initial;
-  border-color: initial;
-  border-image: initial;
-  outline: 0px;
-  &:hover {
-    box-shadow: rgba(110, 120, 152, 0.22) 0px 2px 10px 0px;
-  }
-  @media (max-width: ${props => props.theme.screen.md}) {
-  }
-  @media (max-width: ${props => props.theme.screen.sm}) {
-    margin-left: 0;
-  }
-`
-const ImageWrapper = styled.div`
-  justify-self: end;
-  align-self: center;
-  @media (max-width: ${props => props.theme.screen.md}) {
-    justify-self: center;
-  }
-`
-
-const StyledImage = styled(Img)`
-  width: 500px;
-  @media (max-width: ${props => props.theme.screen.md}) {
-    width: 400px;
-  }
-  @media (max-width: ${props => props.theme.screen.sm}) {
-    width: 300px;
-    display: none;
   }
 `
