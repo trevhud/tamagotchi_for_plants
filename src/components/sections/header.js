@@ -1,79 +1,49 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useRef, useEffect } from "react"
 import styled from "styled-components"
-
-import {
-  select,
-  easeLinear,
-  max
-} from 'd3';
-
+import { select, easeLinear } from 'd3'
 import { Container } from "../global"
 
-let branches = 0
-let gamePlays = 0
-let timerId
-
 // Tree configuration
-const seed = {i: 0, x: 420, y: 600, a: 0, l: 130, d: 0, g: gamePlays }; // a = angle, l = length, d = depth
-let speed = 10000
-let da = 0.5; // Angle delta
-const dl = 0.8; // Length delta (factor)
-const ar = 0.7; // Randomness
-const maxDepth = 12;
+const speed = 1000
+const angleDelta = 0.5
+const lengthDelta = 0.8
+const randomness = 0.7
+const maxDepth = 10
 
 const Header = () => {
-  const svgRef = useRef(null);
-  const [perfectMode, setPerfectMode] = useState(false);
-  const dyingRef = useRef(false)
-  dyingRef.current = false
-  const pathologies = [changeColor, curlBranches, growthSpeed]
-  const pathArray = [false, false, false]
+  // useRef allows us to always have access to the svg
+  const svgRef = useRef(null)
+  const seed = { x: 420, y: 600, angle: 0, length: 130, depth: 0 }
 
-  function leftRightBranch(b, left) {
-    const leaf = b.d === maxDepth - 1
-
-    if (b.d === maxDepth) {
-      clearInterval(timerId)
-      console.log('you win')
-      return;
-    }
-
-    const end = endPt(b)
-    const daR = ar * Math.random() - ar * 0.5;
-    const newB = {
-      i: branches,
-      x: end.x,
-      y: end.y,
-      a: left ? (b.a - da) : (b.a + da) + daR,
-      l: leaf ? 6 : (b.l * dl),
-      d: b.d + 1,
-      parent: b.i,
-      g: b.g
-    };
-    drawLine(newB);
+  const regenerate = () => {
+    // Remove the old one and draw the line
+    select(svgRef.current).selectAll('*').remove()
+    drawLine(seed)
   }
 
-  function drawLine(branch) {
-    branches++
-
-    let line = select(svgRef.current)
+  const drawLine = (branch) => {
+    // Draw the line using its corresponding data
+    const line = select(svgRef.current)
       .append('line')
       .datum(branch)
-      .attr('id', 'line' + branch.i)
       .attr('class', 'line')
-      .attr('x1', x1)
-      .attr('y1', y1)
-      .attr('x2', x2)
-      .attr('y2', y2)
-      .style('stroke', 'green')
-      .style('stroke-width', function(d) {
-        return (d.d === maxDepth - 1) ? '20px' : parseInt(maxDepth + 1 - d.d) + 'px';
-      })
-      .style('stroke-linecap', function(d) {
-        return (d.d === maxDepth - 1) ? 'round' : 'butt'
+      .attr('x1', (d) => d.x)
+      .attr('y1', (d) => d.y)
+      .attr('x2', (d) => endPoint(d).x)
+      .attr('y2', (d) => endPoint(d).y)
+      .style('stroke', (d) => isLeaf(d) ? 'green' : 'saddleBrown')
+      .style('stroke-linecap', (d) => isLeaf(d) ? 'round' : 'butt' )
+      .style('stroke-width', (d) => {
+        return isLeaf(d) ? '10px' : parseInt(maxDepth + 1 - d.depth) + 'px'
       })
 
-    let totalLength = line.node().getTotalLength()
+    animateLine(branch, line)
+  }
+
+  const animateLine = (branch, line) => {
+    // The line is drawn already, the following code animates it like it's growing
+    // When it is done being drawn, it kicks off a new branch
+    const totalLength = line.node().getTotalLength()
 
     line.attr("stroke-dasharray", totalLength + " " + totalLength)
       .attr("stroke-dashoffset", totalLength)
@@ -83,60 +53,42 @@ const Header = () => {
       .ease(easeLinear)
       .attr("stroke-dashoffset", 0)
       .on('end', () => {
-        if (branch.g === gamePlays) {
-          leftRightBranch(branch, true)
-          leftRightBranch(branch)
-        }
+        makeNewBranch(branch, true)
+        makeNewBranch(branch)
       })
   }
 
-  function regenerate() {
-    console.log('regen')
-    curlBranches(true)
-    growthSpeed(true)
-    clearInterval(timerId)
-    if (!perfectMode) startTimer()
-    gamePlays += 1
-    seed.g = gamePlays
-    select(svgRef.current).selectAll('*').remove()
-    branches = 0
-    drawLine(seed)
+  const makeNewBranch = (branch, left) => {
+    // Make a new branch, left or right depending on the second parameter
+    if (isLeaf(branch)) return
+
+    const end = endPoint(branch)
+    const angleDeltaRandom = randomness * Math.random() - randomness * 0.5;
+
+    const newBranch = {
+      x: end.x,
+      y: end.y,
+      angle: left ? (branch.angle - angleDelta) : (branch.angle + angleDelta) + angleDeltaRandom,
+      length: isLeaf(branch) ? 2 : (branch.length * lengthDelta),
+      depth: branch.depth + 1
+    };
+    drawLine(newBranch);
   }
 
-  function changeColor(green) {
-    select(svgRef.current)
-      .selectAll('.line')
-      .style('stroke', green ? 'green' : 'yellow')
-    pathArray[0] = !green
+  const isLeaf = (branch) => {
+    // Return whether it is the last set of elements drawn
+    return branch.depth === maxDepth
   }
 
-  function curlBranches(uncurl) {
-    da = uncurl ? 0.5 : 2
-    pathArray[1] = !uncurl
+  const endPoint = (branch) => {
+    // Return endpoint of branch
+    return {
+      x: branch.x + branch.length * Math.sin( branch.angle ),
+      y: branch.y - branch.length * Math.cos( branch.angle )
+    }
   }
 
-  function growthSpeed(faster) {
-    speed = faster ? 1000 : 5000
-    pathArray[2] = !faster
-  }
-
-  function startTimer() {
-    timerId = setInterval(() => {
-      if (pathArray.every(val => val === false)) {
-        dyingRef.current = false
-        pathologies[Math.floor(Math.random() * pathologies.length)]()
-      } else if (!dyingRef.current) {
-        dyingRef.current = true
-      } else {
-        console.log('game over')
-        gamePlays = 0
-        clearInterval(timerId)
-        dyingRef.current = false
-      }
-    }, 2000)
-  }
-
-  useEffect(regenerate,[perfectMode]);
+  useEffect(regenerate)
 
   return (
     <HeaderWrapper id="top">
@@ -144,12 +96,7 @@ const Header = () => {
         <Flex>
           <div><svg height="600px" width="100%" ref={svgRef} /></div>
           <ActionsContainer>
-            <button onClick={() => curlBranches(true)}>Add water</button>
-            <button onClick={() => changeColor(true)}>Add nutrients</button>
-            <button onClick={() => growthSpeed(true)}>Add light</button>
-            <button onClick={() => setPerfectMode(!perfectMode)} className={perfectMode ? 'toggled' : null}>Perfect mode</button>
             <button onClick={regenerate}>Regenerate</button>
-            <div><p>{dyingRef.current ? 'Your plant is dying' : null}</p></div>
           </ActionsContainer>
         </Flex>
       </Container>
@@ -158,19 +105,6 @@ const Header = () => {
 }
 
 export default Header
-
-function endPt(b) {
-  // Return endpoint of branch
-  const x = b.x + b.l * Math.sin( b.a );
-  const y = b.y - b.l * Math.cos( b.a );
-  return {x: x, y: y};
-}
-
-// D3 functions
-function x1(d) {return d.x;}
-function y1(d) {return d.y;}
-function x2(d) {return endPt(d).x;}
-function y2(d) {return endPt(d).y;}
 
 const HeaderWrapper = styled.header`
   background-color: #f8f8f8;
