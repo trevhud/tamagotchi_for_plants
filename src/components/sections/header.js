@@ -3,7 +3,8 @@ import styled from "styled-components"
 
 import {
   select,
-  easeLinear
+  easeLinear,
+  max
 } from 'd3';
 
 import { Container } from "../global"
@@ -14,20 +15,26 @@ let timerId
 
 // Tree configuration
 const seed = {i: 0, x: 420, y: 600, a: 0, l: 130, d: 0, g: gamePlays }; // a = angle, l = length, d = depth
-let speed = 4000
+let speed = 10000
 let da = 0.5; // Angle delta
 const dl = 0.8; // Length delta (factor)
 const ar = 0.7; // Randomness
-const maxDepth = 10;
+const maxDepth = 12;
 
 const Header = () => {
   const svgRef = useRef(null);
   const [perfectMode, setPerfectMode] = useState(false);
+  const dyingRef = useRef(false)
+  dyingRef.current = false
   const pathologies = [changeColor, curlBranches, growthSpeed]
+  const pathArray = [false, false, false]
 
   function leftRightBranch(b, left) {
+    const leaf = b.d === maxDepth - 1
+
     if (b.d === maxDepth) {
       clearInterval(timerId)
+      console.log('you win')
       return;
     }
 
@@ -38,7 +45,7 @@ const Header = () => {
       x: end.x,
       y: end.y,
       a: left ? (b.a - da) : (b.a + da) + daR,
-      l: b.l * dl,
+      l: leaf ? 6 : (b.l * dl),
       d: b.d + 1,
       parent: b.i,
       g: b.g
@@ -59,7 +66,12 @@ const Header = () => {
       .attr('x2', x2)
       .attr('y2', y2)
       .style('stroke', 'green')
-      .style('stroke-width', function(d) {return parseInt(maxDepth + 1 - d.d) + 'px';})
+      .style('stroke-width', function(d) {
+        return (d.d === maxDepth - 1) ? '20px' : parseInt(maxDepth + 1 - d.d) + 'px';
+      })
+      .style('stroke-linecap', function(d) {
+        return (d.d === maxDepth - 1) ? 'round' : 'butt'
+      })
 
     let totalLength = line.node().getTotalLength()
 
@@ -79,7 +91,7 @@ const Header = () => {
   }
 
   function regenerate() {
-    console.log(timerId, perfectMode, gamePlays)
+    console.log('regen')
     curlBranches(true)
     growthSpeed(true)
     clearInterval(timerId)
@@ -95,18 +107,33 @@ const Header = () => {
     select(svgRef.current)
       .selectAll('.line')
       .style('stroke', green ? 'green' : 'yellow')
+    pathArray[0] = !green
   }
 
   function curlBranches(uncurl) {
     da = uncurl ? 0.5 : 2
+    pathArray[1] = !uncurl
   }
 
   function growthSpeed(faster) {
-    speed = faster ? 5000 : 20000
+    speed = faster ? 1000 : 5000
+    pathArray[2] = !faster
   }
 
   function startTimer() {
-    timerId = setInterval(() => pathologies[Math.floor(Math.random() * pathologies.length)](), 5000)
+    timerId = setInterval(() => {
+      if (pathArray.every(val => val === false)) {
+        dyingRef.current = false
+        pathologies[Math.floor(Math.random() * pathologies.length)]()
+      } else if (!dyingRef.current) {
+        dyingRef.current = true
+      } else {
+        console.log('game over')
+        gamePlays = 0
+        clearInterval(timerId)
+        dyingRef.current = false
+      }
+    }, 2000)
   }
 
   useEffect(regenerate,[perfectMode]);
@@ -122,6 +149,7 @@ const Header = () => {
             <button onClick={() => growthSpeed(true)}>Add light</button>
             <button onClick={() => setPerfectMode(!perfectMode)} className={perfectMode ? 'toggled' : null}>Perfect mode</button>
             <button onClick={regenerate}>Regenerate</button>
+            <div><p>{dyingRef.current ? 'Your plant is dying' : null}</p></div>
           </ActionsContainer>
         </Flex>
       </Container>
